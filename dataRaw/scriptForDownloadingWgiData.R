@@ -1,4 +1,3 @@
-library(wbstats)
 library(tidyverse)
 library(haven)
 
@@ -10,12 +9,14 @@ wgiDataRaw <- read_dta(unz(temp, "wgidataset.dta"))
 unlink(temp)
 
 head(wgiDataRaw)
+names(wgiDataRaw)
 
-write.table(wgiData, file="wgiDataRaw.csv",sep=",",row.names=F)
+# To view the list of countries in the dataset
+unique(wgiDataRaw$countryname)
 
 # In order to be consistent throughout the data collection and analysis, we need to replace "Cape Verde" with"Cabo Verde"
 
-WGI2$country <- replace(WGI2$country, WGI2$country == "Cape Verde", "Cabo Verde")
+wgiDataRaw$countryname <- replace(wgiDataRaw$countryname, wgiDataRaw$countryname == "Cape Verde", "Cabo Verde")
 
 # Selecting the variables of interest for this study by selecting their estimated values from the WGI dataset:
 # Here is the list of the variables with their definition:
@@ -32,14 +33,30 @@ WGI2$country <- replace(WGI2$country, WGI2$country == "Cape Verde", "Cabo Verde"
 # corruptionControl (cce): Control of Corruption Estimate – capturing perceptions of the extent to which public power is exercised for private gain, including both petty and grand forms of corruption, as well as "capture" of the state by elites and private interests.
 
 
-WGI2 <- select(WGI2, country, iso3c = code, date = year, stability = pve, voiceAndAccountability = vae, governmentEffectiveness = gee, regulatoryQuality = rqe, ruleOfLaw = rle, corruptionControl= cce)
+wgiDataRaw <- select(wgiDataRaw, country = countryname, iso3c = code, date = year, stability = pve, voiceAndAccountability = vae, governmentEffectiveness = gee, regulatoryQuality = rqe, ruleOfLaw = rle, corruptionControl= cce)
 
-head(WGI2)
-summary(WGI2)
+head(wgiDataRaw)
+summary(wgiDataRaw)
 
-# The summary shows that there are up to 177 NA in some of the variables, so we decided to impute these missing values using knn imputation:
 
-WGI2 <- kNN(WGI2)
-WGI2 <- select(WGI2, country, iso3c, date, stability, voiceAndAccountability, governmentEffectiveness, regulatoryQuality, ruleOfLaw, corruptionControl)
-head(WGI2)
-summary(WGI2)
+# Creating a variable with two category of stability ("stabilityCategory2") with dplyr: "1" for stable country, "0" for unstable country
+wgiDataRaw <- mutate(wgiDataRaw,
+               stabilityCategory2 = if_else(wgiDataRaw$stability > 0, "stable", "unstable"))
+wgiDataRaw$stabilityCategory2 <- as.factor(wgiDataRaw$stabilityCategory2)
+head(wgiDataRaw)
+summary(wgiDataRaw)
+table(wgiDataRaw$stabilityCategory2)
+
+# Assuming that countries with stability scores close to zero are either "moderately stable" (scores from 0 to 0.999) or "moderately unstable"" (scores from -0.999 to 0), we also create a variable with four categories of stability with dplyr based on arbitrary thresholds of + 1 (for highly stable) and - 1 (for highly unstable)
+wgiDataRaw <- wgiDataRaw %>% mutate(stabilityCategory4 =cut(stability, breaks=c(-Inf, -1, 0, 1, Inf), labels=c("highly unstable","moderately unstable","moderately stable", "highly stable")))
+head(wgiDataRaw)
+summary(wgiDataRaw)
+table(wgiDataRaw$stabilityCategory4)
+
+# Making wgiDataRaw available in the directory
+wgiDataRaw <- write.csv(wgiDataRaw, "dataRaw/wgiDataRaw.csv")
+
+wgiDataRaw1 <- read.csv("dataRaw/wgiDataRaw.csv")
+
+wgiDataRaw1 <- as.tibble(wgiDataRaw1)
+summary(wgiDataRaw1)
