@@ -53,10 +53,15 @@ head(wgiDataRaw)
 summary(wgiDataRaw)
 table(wgiDataRaw$stabilityCategory4)
 
-# Making wgiDataRaw available in the directory
-wgiDataRaw <- write.csv(wgiDataRaw, "dataRaw/wgiDataRaw.csv")
+# # Making wgiDataRaw available in the directory
+# wgiDataRaw <- write_csv(wgiDataRaw, "wgiDataRaw.csv")
+# 
+# wgiDataRaw1 <- write_csv(wgiDataRaw, "dataRaw/wgiDataRaw.csv")
+# 
+# wgiDataRaw1 <- read_csv("dataRaw/wgiDataRaw.csv")
+# 
+# wgiDataRaw1 <- as_tibble(wgiDataRaw1)
+# 
+# View(wgiDataRaw1)
 
-wgiDataRaw1 <- read.csv("dataRaw/wgiDataRaw.csv")
 
-wgiDataRaw1 <- as.tibble(wgiDataRaw1)
-summary(wgiDataRaw1)
