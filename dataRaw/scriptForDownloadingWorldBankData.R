@@ -1,25 +1,42 @@
+# Script to download World Bank data using 'wbstats'
+
 library(wbstats)
 library(tidyverse)
+library(lubridate)
+library(Hmisc)
+library(caret)
+library(kernlab)
+library(stringr)
+library(knitr)
+library(VIM)
+library(haven)
 
 
-# To view the world bank's list of countries
-countries <- wb_countries(lang = "en")
-View(countries)
+# # To view the world bank's list of countries
+# countries <- wb_countries(lang = "en")
+# View(countries)
+# 
+# # To view all indicators covered by wbstats
+# allIndicators <- wb_indicators(lang = "en")
+# allIndicators <- as_tibble(allIndicators)
+# allIndicators
+# 
+# # To search for specific indicators
+# indicators <- wb_search(pattern = "population growth")
+# indicators <- as_tibble(indicators)
+# indicators
+# populationIndicators <- write_csv(indicators, "populationIndicators")
 
 
-# To list and identify the world bank indicators
-indicators <- wb_search(pattern = "wgi")
-indicators <- as_tibble(indicators)
-indicators
+# Downloading the data on total population (SP.POP.TOTL) and populattion growth (SP.POP.GROW)
+populationDF <- wb_data(country = "countries_only", indicator = c("SP.POP.TOTL", "SP.POP.GROW"), start_date = 1996, end_date = 2022)
+populationDF <- as_tibble(populationDF)
+names(populationDF)
+populationDF <- select(populationDF, country, iso2c, iso3c, date, populationTotal = SP.POP.TOTL, populationGrowth = SP.POP.GROW)
 
-View(indicators)
+populationDF$date <- as.numeric(as.character(populationDF$date))
+head(populationDF)
+View(populationDF)
 
-# Downloading the wgi data from the World Bank website 
-
-# Example: downloading the outcome variable political stability estimates (polStabEst) = GV.POLI.ST.ES
-
-polStabEstData <- wb_data(indicator = "GV.POLI.ST.ES", country = "countries_only", start_date = 1996, end_date = 2020)
-head(polStabEstData)
-names(polStabEstData)
-polStabEstData <- select(polStabEst, iso2c, iso3c, country, date, polStabEst = GV.POLI.ST.ES)
-View(polStabEstData)
+# saving the population data in the directory
+populationDataRaw <- write_csv(populationDF, "dataRaw/populationDataRaw.csv")
