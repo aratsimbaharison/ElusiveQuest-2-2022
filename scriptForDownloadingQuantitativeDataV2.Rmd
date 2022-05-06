@@ -1,0 +1,880 @@
+---
+title: "Scripts for Downloading the Quantitative Data - Version 2"
+author: "Adrien Ratsimbaharison"
+date: "March 16, 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+# loading the required libraries:
+library(wbstats)
+library(readr)
+library(lubridate)
+library(dplyr)
+library(tidyr)
+library(Hmisc)
+library(caret)
+library(kernlab)
+library(stringr)
+library(knitr)
+library(VIM)
+library(haven)
+
+```
+
+
+
+## Downloading and Cleaning the Data on World Governance Indicators (WGI) from the World Bank Website:
+
+Note concerning the country names and codes:
+As we collected the data from the World Bank, we realized that the country names and codes were not consistent throughout the database and between the World Bank and other organizations, such as the United Nations.
+Therefore, in order to be consistent throughout the data collection and analysis, we decided to adopt the World Bank country names and codes as explained in the following webpage: [API: Country Queries](https://datahelpdesk.worldbank.org/knowledgebase/articles/898590-api-country-queries)
+The file `WBCountryIso2c_Iso3c_M49Code.csv` was created by hand based on the information provided by the World Bank.
+
+```{r warning=FALSE}
+
+# Downloading the WGI dataset (WGI2) from WGI Project homepage at: http://info.worldbank.org/governance/wgi/wgidataset_stata.zip. The stata file is already formated into country-year dataframe and directly usable. 
+# In order to avoid different problems of connecting and downloading the data directly from the WGI Project homepage, using r commands, the dataset was first downloaded to a local repository under the file name "wgidataset.dta" and then read into r
+
+WGI2 <- read_dta("wgidataset.dta")
+WGI2 <- tbl_df(WGI2)
+WGI2 <- rename(WGI2, country = countryname)
+str(WGI2)
+names(WGI2)
+
+# In order to be consistent throughout the data collection and analysis, we need to replace # "Cape Verde" with"Cabo Verde", "Côte d'Ivoire" with "Cote d'Ivoire", "São Tomé and Principe " with "Sao Tome and Principe"
+
+WGI2$country <- replace(WGI2$country, WGI2$country == "Cape Verde", "Cabo Verde")
+WGI2$country <- replace(WGI2$country, WGI2$country == "Côte d'Ivoire", "Cote d'Ivoire")
+WGI2$country <- replace(WGI2$country, WGI2$country == "São Tomé and Principe", "Sao Tome and Principe")
+
+# Selecting the variables of interest for this study by selecting their estimated values from the WGI dataset:
+# Here is the list of the variables with their definition:
+# stability (pve): Political Stability and Absence of Violence/Terrorism Estimate – capturing perceptions of the likelihood that the government will be destabilized or overthrown by unconstitutional or violent means, including politically‐motivated violence and terrorism.
+# 
+# voiceAndAccountability (vae): Voice and Accountability Estimate – capturing perceptions of the extent to which a country's citizens are able to participate in selecting their government, as well as freedom of expression, freedom of association, and a free media.
+# 
+# governmentEffectiveness (gee): Government Effectiveness Estimate – capturing perceptions of the quality of public services, the quality of the civil service and the degree of its independence from political pressures, the quality of policy formulation and implementation, and the credibility of the government's commitment to such policies.
+# 
+# regulatoryQuality (rqe): Regulatory Quality Estimate – capturing perceptions of the ability of the government to formulate and implement sound policies and regulations that permit and promote private sector development.
+# 
+# ruleOfLaw (rle): Rule of Law Estimate – capturing perceptions of the extent to which agents have confidence in and abide by the rules of society, and in particular the quality of contract enforcement, property rights, the police, and the courts, as well as the likelihood of crime and violence.
+# 
+# corruptionControl (cce): Control of Corruption Estimate – capturing perceptions of the extent to which public power is exercised for private gain, including both petty and grand forms of corruption, as well as "capture" of the state by elites and private interests.
+
+
+WGI2 <- select(WGI2, country, iso3c = code, date = year, stability = pve, voiceAndAccountability = vae, governmentEffectiveness = gee, regulatoryQuality = rqe, ruleOfLaw = rle, corruptionControl= cce)
+             
+head(WGI2)
+summary(WGI2)
+
+# The summary shows that there are up to 177 NA in some of the variables, so we decided to impute these missing values using knn imputation:
+
+WGI2 <- kNN(WGI2)
+WGI2 <- select(WGI2, country, iso3c, date, stability, voiceAndAccountability, governmentEffectiveness, regulatoryQuality, ruleOfLaw, corruptionControl)
+head(WGI2)
+summary(WGI2)
+
+# Creating a variable with two category of stability ("stabilityCategory2") with dplyr: "1" for stable country, "0" for unstable country
+WGI2 <- mutate(WGI2,
+        stabilityCategory2 = if_else(WGI2$stability > 0, "stable", "unstable"))
+WGI2$stabilityCategory2 <- as.factor(WGI2$stabilityCategory2)
+head(WGI2)
+summary(WGI2)
+table(WGI2$stabilityCategory2)
+
+# Assuming that countries with stability scores close to zero are either "moderately stable" (scores from 0 to 0.999) or "moderately unstable"" (scores from -0.999 to 0), we also create a variable with four categories of stability with dplyr based on arbitrary thresholds of + 1 (for highly stable) and - 1 (for highly unstable)
+WGI2 <- WGI2 %>% mutate(stabilityCategory4 =cut(stability, breaks=c(-Inf, -1, 0, 1, Inf), labels=c("highly unstable","moderately unstable","moderately stable", "highly stable")))
+head(WGI2)
+summary(WGI2)
+table(WGI2$stabilityCategory2)
+
+
+##
+# Creating a variable with two category of respect for rule of law (ruleOfLawCategory2) with dplyr: "1" for stable country, "0" for unstable country
+WGI2 <- mutate(WGI2,
+        ruleOfLawCategory2 = if_else(WGI2$ruleOfLaw > 0, "respect for rule of law", "no respect for rule of law"))
+WGI2$ruleOfLawCategory2 <- as.factor(WGI2$ruleOfLawCategory2)
+head(WGI2)
+summary(WGI2)
+table(WGI2$ruleOfLawCategory2)
+
+# We also create a variable with four categories of respect for rule of law with dplyr based on arbitrary thresholds of + 1 (for highly stable) and - 1 (for highly unstable)
+WGI2 <- WGI2 %>% mutate(ruleOfLawCategory4 =cut(ruleOfLaw, breaks=c(-Inf, -1, 0, 1, Inf), labels=c("ROL highly disrespected","ROL moderately disrespected","ROL moderately respected", "ROL highly respected")))
+head(WGI2)
+summary(WGI2)
+table(WGI2$ruleOfLawCategory4)
+
+
+# Making WGI2 available in the directory
+# WGI2 <- write.csv(WGI2, "WGI2.csv")
+
+
+```
+
+
+## Downloading the Data on the UN Country Names and Codes with their Classification into Region and Subregion from a GitHub Repository Maintained by Luke Duncalfe   
+
+
+```{r}
+
+# We downloaded the data on the UN country names and codes with their classification into region and subregion from the github repository maintained by Luke Duncalfe   
+# at: https://github.com/lukes/ISO-3166-Countries-with-Regional-Codes/blob/master/all/all.csv
+# According to the author and contributors to this database, "These lists are the result of merging data from two sources, the Wikipedia ISO 3166-1 article for alpha and numeric country codes, and the UN Statistics site for countries' regional, and sub-regional codes. In addition to countries, it includes dependent territories."
+
+regionSubregionDf <- read_csv("https://raw.githubusercontent.com/aratsimbaharison/ISO-3166-Countries-with-Regional-Codes/master/all/all.csv")
+regionSubregionDf <- tbl_df(regionSubregionDf)
+regionSubregionDf <- select(regionSubregionDf, country = name, iso2c = `alpha-2`, iso3c = `alpha-3`, 
+                            M49Code = `country-code`, region, subregion = `sub-region`)
+regionSubregionDf <- na.omit(regionSubregionDf) # this will get rid of some locations that does not have codes
+
+# In order to be consistent throughout the data collection and analyses, and particularly to align the UN country names and codes with those used by the World Bank, we need to make the following changes:
+
+# The following country names have been changed:
+
+# First, we need to remove the special characters from Cote d'Ivoire and Sao Tome and Principe
+
+
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Côte d'Ivoire", "Cote d'Ivoire")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "São Tomé and Principe", "Sao Tome and Principe")
+
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Bahamas", "Bahamas, The")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Bolivia (Plurinational State of)", "Bolivia")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Congo", "Congo, Rep.")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Congo (Democratic Republic of the)", "Congo, Dem. Rep.")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Egypt", "Egypt, Arab Rep.")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Gambia", "Gambia, The")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Hong Kong", "Hong Kong SAR, China")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Korea (Democratic People's Republic of)", "Korea, Dem. People's Rep.")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Korea (Republic of)", "Korea, Rep.")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Iran (Islamic Republic of)", "Iran, Islamic Rep.")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Lao People's Democratic Republic", "Lao PDR")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Macedonia (the former Yugoslav Republic of)", "Macedonia, FYR")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Kyrgyzstan", "Kyrgyz Republic")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Macao", "Macao SAR, China")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Micronesia (Federated States of)", "Micronesia, Fed. Sts")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Moldova (Republic of)", "Moldova")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Palestine, State of", "West Bank and Gaza")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Slovakia", "Slovakia Republic")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Taiwan, Province of China", "Taiwan, China")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Tanzania, United Republic of", "Tanzania")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "United States of America", "United States")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "United Kingdom of Great Britain and Northern Ireland", "United Kingdom")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Yemen", "Yemen, Rep.")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Viet Nam", "Vietnam")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Venezuela (Bolivarian Republic of)", "Venezuela")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Saint Kitts and Nevis", "St. Kitts and Nevis")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Saint Vincent and the Grenadines", "St. Vincent and the Grenadines")
+regionSubregionDf$country <- replace(regionSubregionDf$country, regionSubregionDf$country == "Saint Lucia", "St. Lucia")
+regionSubregionDf$iso3c <- replace(regionSubregionDf$iso3c, regionSubregionDf$iso3c == "COD", "ZAR")
+
+# The following country names have been deleted:
+
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Bonaire, Sint Eustatius and Saba",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Åland Islands",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Anguilla",]
+
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Falkland Islands (Malvinas)",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "French Guiana",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "French Polynesia",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Gibraltar",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Guadeloupe",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Holy See",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Isle of Man",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Guernsey",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Jersey",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Martinique",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Mayotte",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Montserrat",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Northern Mariana Islands",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Réunion",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Saint Barthélemy",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Saint Helena, Ascension and Tristan da Cunha",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Saint Martin (French part)",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Sint Maarten (Dutch part)",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Tokelau",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Turks and Caicos Islands",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Wallis and Futuna",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Svalbard and Jan Mayen",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "New Caledonia",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Norfolk Island",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Pitcairn",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Saint Barthélemy",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Saint Pierre and Miquelon",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Western Sahara",]
+regionSubregionDf <- regionSubregionDf[! regionSubregionDf$country == "Virgin Islands (British)",]
+
+head(regionSubregionDf)
+
+# List of 208 countries in the world according to the Wikipedia ISO 3166-1 article for alpha and numeric country codes, and the UN Statistics site for countries' regional, and sub-regional codes:
+unique(regionSubregionDf$country)
+
+```
+
+
+## Joining the Data on WGI with the UN country names and codes and classification into Regions and Subregions
+
+```{r}
+#joining the data on WGI with the UN's country names and codes and their classification by region and subregion
+WGI2byCountryAndRegion <- left_join(WGI2, regionSubregionDf, by = "country")
+WGI2byCountryAndRegion <- tbl_df(WGI2byCountryAndRegion)
+WGI2byCountryAndRegion$date <- as.numeric(as.character(WGI2byCountryAndRegion$date))
+names(WGI2byCountryAndRegion)
+
+WGI2byCountryAndRegion <- select(WGI2byCountryAndRegion, country, M49Code, iso2c, iso3c = iso3c.x, date, stability, stabilityCategory2, stabilityCategory4, corruptionControl, governmentEffectiveness, regulatoryQuality, ruleOfLaw, ruleOfLawCategory2, ruleOfLawCategory4, voiceAndAccountability, region, subregion)
+names(WGI2byCountryAndRegion)
+summary(WGI2byCountryAndRegion)
+
+
+# # making the clean data on WGI2 by region and subregion available in the local repository
+# WGI2byCountryAndRegion <- write.csv(WGI2byCountryAndRegion, "WGI2byCountryAndRegion.csv")
+# WGI2byCountryAndRegion <- tbl_df(WGI2byCountryAndRegion)
+
+
+```
+
+
+
+## Downloading and Cleaning the Data on Population, Development, Inequality, and Poverty from the World Bank Website using `wbstats`package, and then joining the datasets with the dataset on WGI by region and subregion (WGI2byCountryAndRegion)
+
+```{r warning=FALSE}
+
+# Downloading the data on population size (SP.POP.TOTL)
+populationDF <- wb(country = "countries_only", indicator = "SP.POP.TOTL", 
+                     startdate = 1996, enddate = 2018, POSIXct = TRUE)
+populationDF <- tbl_df(populationDF)
+populationDF <- select(populationDF, country, iso2c, date, population = value)
+populationDF$date <- as.numeric(as.character(populationDF$date))
+head(populationDF)
+summary(populationDF)
+
+# Creating population categories:
+
+# We divide the world population in 5 categories as : 
+# very small: 0 to 5000 000 (less than 5 million) 
+# small: 5 000 000 to 25 000 000 (less than 25 million)
+# medium: 25 000 000 to 75 000 000 (less than 75 million)
+# large: 75 000 000 to 250 000 000
+# very large more than 250 000 000
+
+
+populationDF <- populationDF %>% mutate(populationCategory5 =cut(population, breaks= c(0, 5000000, 25000000, 75000000, 250000000, Inf), labels=c("very small", "small","medium", "large", "very large")))
+head(populationDF)
+summary(populationDF)
+table(populationDF$populationCategory5)
+
+
+
+# Downloading the data on GDP growth (annual %) (NY.GDP.MKTP.KD.ZG)
+GDPannualGrowthDF <- wb(country = "countries_only", indicator = "NY.GDP.MKTP.KD.ZG", 
+                     startdate = 1996, enddate = 2018, POSIXct = TRUE)
+GDPannualGrowthDF <- tbl_df(GDPannualGrowthDF)
+GDPannualGrowthDF <- select(GDPannualGrowthDF, country, iso2c, date, GDPannualGrowthRate = value)
+GDPannualGrowthDF$date <- as.numeric(as.character(GDPannualGrowthDF$date))
+head(GDPannualGrowthDF)
+summary(GDPannualGrowthDF)
+
+
+# Downloading the data on GNI per capita (constant 2010 US$) (NY.GNP.PCAP.KD)
+GNIperCapitaDf <- wb(country = "countries_only", indicator = "NY.GNP.PCAP.KD", 
+                     startdate = 1996, enddate = 2018, POSIXct = TRUE)
+GNIperCapitaDf <- tbl_df(GNIperCapitaDf)
+GNIperCapitaDf <- select(GNIperCapitaDf, country, iso2c, date, GNIperCapita = value)
+GNIperCapitaDf$date <- as.numeric(as.character(GNIperCapitaDf$date))
+head(GNIperCapitaDf)
+summary(GNIperCapitaDf)
+
+# Creating a development category (devCategory) variable with four levels of development, according to the World Bank's 2013 country classification
+GNIperCapitaDf <- GNIperCapitaDf %>% mutate(devCategory=cut(GNIperCapita, breaks=c(0, 1025, 4035, 12475, Inf), labels=c("Low Income","Lower Middle Income","Upper Middle Income", "High Income")))
+head(GNIperCapitaDf)
+summary(GNIperCapitaDf)
+table(GNIperCapitaDf$devCategory)
+
+
+# Downloading the data on Human Development Indicators (HDI) from the UNDP Website (http://hdr.undp.org/en/data#), which needs to be transformed into country-year format, using `gather` function in `dplyr` package:
+# In order to avoid different problems of connecting and downloading the data using r commands, the dataset was first downloaded to a local repository under the file name "UNDP.HDI.csv" and then read into r
+
+UNDP_HDI <- read_csv("UNDP.HDI.csv")
+head(UNDP_HDI)
+
+UNDP_HDI <- UNDP_HDI %>% 
+  gather("1990",    "1991",    "1992",    "1993",    "1994",   "1995",  "1996",    "1997",    "1998",    "1999",    "2000",   "2001",    "2002",    "2003",    "2004",    "2005",    "2006",   "2007",    "2008",    "2009",    "2010",    "2011",    "2012",   "2013",    "2014",    "2015",    "2016", "2017", key = "year", value = "HDI")
+head(UNDP_HDI)
+summary(UNDP_HDI)
+
+UNDP_HDI <- tbl_df(UNDP_HDI)
+UNDP_HDI$year <- as.numeric(as.character(UNDP_HDI$year))
+UNDP_HDI <- filter(UNDP_HDI, year >= 1996)
+UNDP_HDI <- rename(UNDP_HDI, date = year)
+UNDP_HDI$date <- as.numeric(as.character(UNDP_HDI$date))
+UNDP_HDI2 <- arrange(UNDP_HDI, country, date)
+
+# In order to be consistent with the World Bank data, the following country names have been changed:
+
+UNDP_HDI2$country <- replace(UNDP_HDI2$country, UNDP_HDI2$country == "Hong Kong, China (SAR)", "Hong Kong SAR, China")
+UNDP_HDI2$country <- replace(UNDP_HDI2$country, UNDP_HDI2$country == "Venezuela", "Venezuela, RB")
+
+# In order to be consistent with the World Bank data, the following country names have been deleted:
+UNDP_HDI2 <- UNDP_HDI2[! UNDP_HDI2$country == "Eswatini (Kingdom of)",]
+
+head(UNDP_HDI2)
+summary(UNDP_HDI2)
+
+# The summary shows that there are 259 NAs (which is about 6%) in the dataset on HDI, we can impute these missing values using knn imputation
+UNDP_HDI2 <- kNN(UNDP_HDI2)
+UNDP_HDI2 <- select(UNDP_HDI2, country, date, HDI)
+head(UNDP_HDI2)
+summary(UNDP_HDI2)
+
+# Downloading the data on social inequality measured in terms of the World Bank's GINI index (SI.POV.GINI)
+GINIDf <- wb(country = "countries_only", indicator = "SI.POV.GINI", 
+            startdate = 1996, enddate = 2018, POSIXct = TRUE)
+GINIDf <- tbl_df(GINIDf)
+GINIDf <- select(GINIDf, country, iso2c, date, GINI = value)
+GINIDf$date <- as.numeric(as.character(GINIDf$date))
+head(GINIDf)
+summary(GINIDf)
+
+# Downloading the data on poverty measured in terms of the World Bank's Poverty headcount ratio at $1.90 a day (2011 PPP) (% of population) (SI.POV.DDAY)
+
+povHeadCountDF <- wb(country = "countries_only", indicator = "SI.POV.DDAY", 
+            startdate = 1996, enddate = 2018, POSIXct = TRUE)
+povHeadCountDF <- tbl_df(povHeadCountDF)
+povHeadCountDF <- select(povHeadCountDF, country, iso2c, date, povertyHeadCount = value)
+povHeadCountDF$date <- as.numeric(as.character(povHeadCountDF$date))
+head(povHeadCountDF)
+summary(povHeadCountDF)
+
+# Joining the data on population, development, social inequality, and poverty: popDevIneqPovDF
+popDevIneqPovDF <- full_join(GNIperCapitaDf, GDPannualGrowthDF, by = c("country", "date")) %>%
+  full_join(., UNDP_HDI2, by = c("country", "date")) %>%
+  full_join(., GINIDf, by = c("country", "date")) %>%
+  full_join(., povHeadCountDF, by = c("country", "date")) %>%
+  full_join(., populationDF, by = c("country", "date"))
+  
+popDevIneqPovDF <- tbl_df(popDevIneqPovDF)
+popDevIneqPovDF$date <- as.numeric(as.character(popDevIneqPovDF$date))
+head(popDevIneqPovDF)
+names(popDevIneqPovDF)
+popDevIneqPovDF <- select(popDevIneqPovDF, country, iso2c = iso2c.x, date, population, populationCategory5, GDPannualGrowthRate, GNIperCapita, devCategory, HDI, GINI, povertyHeadCount)
+summary(popDevIneqPovDF)
+
+# The summary shows that there are 462 NAs for GDPannualGrowthRate, 1747 NAs for GNIperCapita, 702 NAs for HDI, 3561 NAs for GINI, and 3560 NAs for povertyHeadcount
+# Knowing that the values of GINI and poverty head count are not given every year by the World Bank,and assuming that the values of these variables (along with those of GNIperCapita and GDPannualGrowthRate) are not likely to fluctuate from year to year for each country, we decided to impute their missing values, using kNN function from the VIM package. We call the new dataset with massive imputation "devIneqPovDF2".
+
+popDevIneqPovDF <- kNN(popDevIneqPovDF)
+head(popDevIneqPovDF)
+names(popDevIneqPovDF)
+popDevIneqPovDF <- select(popDevIneqPovDF, country, iso2c, date, population, populationCategory5, GDPannualGrowthRate, GNIperCapita, devCategory, HDI, GINI, povertyHeadCount)
+summary(popDevIneqPovDF)
+
+
+# # making the data on population, development, social inequality and poverty available in the local repository
+# popDevIneqPov <- write.csv(popDevIneqPovDF, "popDevIneqPov.csv")
+# popDevIneqPov <- tbl_df(popDevIneqPov)
+
+
+
+```
+
+## Joining the Data on WGI by Country, Region, and Subregion with the Data on Population, Development, Social Inequality, and Poverty (WGIpopDevIneqPov)
+
+
+```{r}
+
+# Using the dataset on devIneqPovDF2 with imputation for HDI, GINI and povertyHeadcount:
+WGI2popDevIneqPov <- left_join(WGI2byCountryAndRegion, popDevIneqPovDF, by = c("country", "date"))
+WGI2popDevIneqPov <- tbl_df(WGI2popDevIneqPov)
+WGI2popDevIneqPov$date <- as.numeric(as.character(WGI2popDevIneqPov$date))
+head(WGI2popDevIneqPov)
+names(WGI2popDevIneqPov)
+WGI2popDevIneqPov <- select(WGI2popDevIneqPov, country, M49Code, iso2c = iso2c.x, iso3c, date, stability, stabilityCategory2, stabilityCategory4, corruptionControl, governmentEffectiveness, regulatoryQuality, ruleOfLaw, ruleOfLawCategory2, ruleOfLawCategory4, voiceAndAccountability, population, populationCategory5, GNIperCapita, devCategory, GDPannualGrowthRate, HDI, GINI, povertyHeadCount, region, subregion)
+summary(WGI2popDevIneqPov)
+
+# The summary shows that there are about 209 NAs for most of the population, development, inequality and poverty variables. A look at the dataframe shows that the missing values are related to some countries that does not have data on these variables. Therefore, we decide to remove the incomplete cases.
+WGI2popDevIneqPov <- na.omit(WGI2popDevIneqPov)
+summary(WGI2popDevIneqPov)
+
+# # making the dataset on WGI, development, social inequality and poverty with imputation (WGI2popDevIneqPov), available in the local repository under the file name `WGI2popDevIneqPov.csv`
+# WGI2popDevIneqPov <- write.csv(WGI2popDevIneqPov, "WGI2popDevIneqPov.csv")
+
+
+```
+
+
+## Downloading and Cleaning the Data on Regime Types from Polity IV and Freedom House
+
+```{r warning= FALSE}
+
+
+# We downloaded the dataset on Polity IV Project directly from the Center for Systemic Peace website at: http://www.systemicpeace.org/inscrdata.html
+
+library(readxl)
+url <- "http://www.systemicpeace.org/inscr/p4v2017.xls"
+destfile <- "p4v2017.xls"
+curl::curl_download(url, destfile)
+polityIV2017 <- read_excel(destfile)
+head(polityIV2017)
+names(polityIV2017)
+
+# Selecting the variables of interest and filtering the years under consideration in this study
+polityIV2017 <- polityIV2017 %>%
+  select("country",  "year", "democ", "autoc", "polity2", "durable", "xrreg", "xrcomp", "xropen", "xconst", "parreg", "parcomp", "exrec", "exconst", "polcomp", "prior", "emonth", "eday", "eyear", "eprec", "interim", "bmonth", "bday", "byear", "bprec", "post", "change", "d4", "sf", "regtrans") %>%
+  filter(year > 1995)
+
+polityScoreDf <- polityIV2017
+polityScoreDf <- tbl_df((polityScoreDf))
+polityScoreDf <- rename(polityScoreDf, polityScore = polity2, date = year)
+polityScoreDf$date <- as.numeric(as.character(polityScoreDf$date))
+
+# Creating a new variable for polity category (polityCategory)
+polityScoreDf <- polityScoreDf %>% mutate(polityCategory=cut(polityScore, breaks=c(-Inf, -6, 6, Inf), labels=c("Autocracy","Anocracy","Democracy")))
+head(polityScoreDf)
+
+# Creating a new variable for politicalChange: either "democratization" if the polityScore increases from year1 to year1 + 1, "autocratization" if the polityScore decreases, or "no change" if the polityScore stays the same from year1 to year1 + 1.
+
+polityScoreDf <- polityScoreDf %>% 
+  group_by(country) %>% 
+  mutate(politicalChange = case_when(polityScore > lag(polityScore) ~ "democratization", 
+                                     polityScore < lag(polityScore) ~ "autocratization",
+                                     TRUE ~ "no change"))
+head(polityScoreDf)
+summary(polityScoreDf)
+
+# In order to be consistent throughout the data collection and analysis we need to change the names of the following countries to align them with the list of countries in the World Bank dataframes.
+
+# The following country names have been changed:
+
+polityScoreDf$country <- replace(polityScoreDf$country, polityScoreDf$country == "Sudan-North", "Sudan")
+polityScoreDf$country <- replace(polityScoreDf$country, polityScoreDf$country == "Ivory Coast", "Cote d'Ivoire")
+polityScoreDf$country <- replace(polityScoreDf$country, polityScoreDf$country == "Gambia", "Gambia, The")
+polityScoreDf$country <- replace(polityScoreDf$country, polityScoreDf$country == "Cape Verde", "Cabo Verde")
+polityScoreDf$country <- replace(polityScoreDf$country, polityScoreDf$country == "Congo Brazzaville", "Congo, Rep.")
+polityScoreDf$country <- replace(polityScoreDf$country, polityScoreDf$country == "Congo Kinshasa", "Congo, Dem. Rep.")
+polityScoreDf$country <- replace(polityScoreDf$country, polityScoreDf$country == "Egypt", "Egypt, Arab Rep.")
+polityScoreDf$country <- replace(polityScoreDf$country, polityScoreDf$country == "Syria", "Syrian Arab Republic")
+polityScoreDf$country <- replace(polityScoreDf$country, polityScoreDf$country == "Iran", "Iran, Islamic Rep.")
+polityScoreDf$country <- replace(polityScoreDf$country, polityScoreDf$country == "Kyrgyzstan", "Kyrgyz Republic")
+polityScoreDf$country <- replace(polityScoreDf$country, polityScoreDf$country == "Korea North", "Korea, Dem. People's Rep.")
+polityScoreDf$country <- replace(polityScoreDf$country, polityScoreDf$country == "Russia", "Russian Federation")
+polityScoreDf$country <- replace(polityScoreDf$country, polityScoreDf$country == "Korea South", "Korea, Rep.")
+polityScoreDf$country <- replace(polityScoreDf$country, polityScoreDf$country == "UAE", "United Arab Emirates")
+polityScoreDf$country <- replace(polityScoreDf$country, polityScoreDf$country == "Yemen", "Yemen, Rep.")
+polityScoreDf$country <- replace(polityScoreDf$country, polityScoreDf$country == "Taiwan", "Taiwan, China")
+polityScoreDf$country <- replace(polityScoreDf$country, polityScoreDf$country == "East Timor", "Timor-Leste")
+polityScoreDf$country <- replace(polityScoreDf$country, polityScoreDf$country == "Timor Leste", "Timor-Leste")
+polityScoreDf$country <- replace(polityScoreDf$country, polityScoreDf$country == "Myanmar (Burma)", "Myanmar")
+
+
+# The following country names have been deleted:
+
+polityScoreDf <- polityScoreDf[! polityScoreDf$country == "Yugoslavia",]
+polityScoreDf <- polityScoreDf[! polityScoreDf$country == "Serbia and Montenegro",]
+polityScoreDf <- polityScoreDf[! polityScoreDf$country == "Czechoslovakia",]
+
+head(polityScoreDf)
+names(polityScoreDf)
+
+# Joining the Polity IV data with the data on region and subregion with iso2c
+
+polityScoreByRegionDF <- left_join(polityScoreDf, regionSubregionDf, by = "country")
+polityScoreByRegionDF <- tbl_df(polityScoreByRegionDF)
+names(polityScoreByRegionDF)
+
+# Selecting the variables of interest
+polityScoreByRegionDF <- select(polityScoreByRegionDF, country, date, democ, autoc, polityScore, durable, xrreg, xrcomp, xropen, xconst, parreg, parcomp, exrec, exconst, polcomp, polityCategory, politicalChange, region, subregion)
+
+head(polityScoreByRegionDF)
+names(polityScoreByRegionDF)
+
+
+
+# Downloadong the "Stata Friendly Freedom House Data, 1973-2018" on political right and civil liberty maintained by Amanda B. Edgell, University of Florida (homepage: https://acrowinghen.com/data/)
+ 
+library(readxl)
+url <- "https://acrowinghen.files.wordpress.com/2018/09/fh_rankings_1973_2018.xlsx"
+destfile <- "fh_rankings_1973_2018.xlsx"
+curl::curl_download(url, destfile)
+fh_rankings_1973_2018 <- read_excel(destfile, sheet = 3)
+freedomHouseDF <- read_excel("fh_rankings_1973_2018.xlsx", sheet = 3)
+freedomHouseDF <- tbl_df(freedomHouseDF)
+head(freedomHouseDF)
+names(freedomHouseDF)
+
+freedomHouseDF <- select(freedomHouseDF, country, year, pr, cl, mean, status, inverse_pr, inverse_cl, inverse_mean, sum)
+freedomHouseDF <- filter(freedomHouseDF, year>= 1996)
+freedomHouseDF <- rename(freedomHouseDF, date = year)
+freedomHouseDF$date <- as.numeric(as.character(freedomHouseDF$date))
+head(freedomHouseDF)
+
+
+# In order to be consistent throughout the data collection and analysis we need to change the names of the following countries to align them with the list of countries in the World Bank dataframes.
+
+# The following country names have been changed:
+
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Bahamas", "Bahamas, The")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Brunei", "Brunei Darussalam")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Cape Verde", "Cabo Verde")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Congo (Brazzaville)", "Congo, Rep.")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Congo (Kinshasa)", "Congo, Dem. Rep.")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Egypt", "Egypt, Arab Rep.")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Iran", "Iran, Islamic Rep.")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Kyrgyzstan", "Kyrgyz Republic")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Lao", "Lao PDR")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Macedonia", "Macedonia, FYR")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Micronesia", "Micronesia, Fed. Sts")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "North Korea", "Korea, Dem. People's Rep.")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Russia", "Russian Federation")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Slovakia", "Slovak Republic")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "South Korea", "Korea, Rep.")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Syria", "Syrian Arab Republic")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Yemen", "Yemen, Rep.")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Taiwan", "Taiwan, China")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Trinidad & Tobago", "Trinidad and Tobago")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Saint Vincent & Grenadines", "St. Vincent and Grenadines")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Antigua & Barbuda", "Antigua and Barbuda")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Saint Kitts and Nevis", "St. Kitts and Nevis")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Saint Lucia", "St. Lucia")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "Bosnia-Herzegovina", "Bosnia and Herzegovina")
+freedomHouseDF$country <- replace(freedomHouseDF$country, freedomHouseDF$country == "East Timor", "Timor-Leste")
+
+
+# The following country names have been deleted:
+
+freedomHouseDF <- freedomHouseDF[! freedomHouseDF$country == "Germany, W.",]
+freedomHouseDF <- freedomHouseDF[! freedomHouseDF$country == "Germany, E.",]
+freedomHouseDF <- freedomHouseDF[! freedomHouseDF$country == "Czechoslovakia",]
+freedomHouseDF <- freedomHouseDF[! freedomHouseDF$country == "Yugoslavia (Serbia & Montenegro)",]
+freedomHouseDF <- freedomHouseDF[! freedomHouseDF$country == "USSR",]
+freedomHouseDF <- freedomHouseDF[! freedomHouseDF$country == "Yemen, N.",]
+freedomHouseDF <- freedomHouseDF[! freedomHouseDF$country == "Yemen, S.",]
+freedomHouseDF <- freedomHouseDF[! freedomHouseDF$country == "Vietnam, N.",]
+freedomHouseDF <- freedomHouseDF[! freedomHouseDF$country == "Vietnam, S.",]
+freedomHouseDF <- freedomHouseDF[! freedomHouseDF$country == "Northern Cyprus",]
+
+
+# The country status have been spelled out as follows: "F" = "Free", "PF" = "Partly Free", "NF" = "Not Free"
+
+freedomHouseDF$status <- replace(freedomHouseDF$status, freedomHouseDF$status == "F", "Free")
+freedomHouseDF$status <- replace(freedomHouseDF$status, freedomHouseDF$status == "PF", "Partly Free")
+freedomHouseDF$status <- replace(freedomHouseDF$status, freedomHouseDF$status == "NF", "Not Free")
+
+head(freedomHouseDF)
+freedomHouseDF <- tbl_df(freedomHouseDF)
+
+
+# Joining the Freedom House data with the data on region and subregion with iso2c
+
+freedomHouseByRegionDF <- left_join(freedomHouseDF, regionSubregionDf, by = "country")
+freedomHouseByRegionDF <- tbl_df(freedomHouseByRegionDF)
+names(freedomHouseByRegionDF)
+freedomHouseByRegionDF <- select(freedomHouseByRegionDF, country, iso2c, iso3c, M49Code, date, pr, cl, sum, mean, status, inverse_pr, inverse_cl, inverse_mean, region, subregion)
+head(freedomHouseByRegionDF)
+
+
+# Creating a new variable for politicalChangeFH: either "democratization" if the inverse_mean increases from year1 to year1 + 1, "autocratization" if the inverse_mean decreases, or "no change" if the inverse_mean stays the same from year1 to year1 + 1.
+
+freedomHouseByRegionDF <- freedomHouseByRegionDF %>% 
+  group_by(country) %>% 
+  mutate(politicalChangeFH = case_when(inverse_mean > lag(inverse_mean) ~ "democratization", 
+                                     inverse_mean < lag(inverse_mean) ~ "autocratization",
+                                     TRUE ~ "no change"))
+# Removing the incomplete cases
+freedomHouseByRegionDF <- na.omit(freedomHouseByRegionDF)
+summary(freedomHouseByRegionDF)
+head(freedomHouseByRegionDF)
+
+# Joining  the data on regime types (Polity IV and Freedom House data) with the data on the UN classification into region and subregion
+
+regimeTypeByRegion <- left_join(freedomHouseByRegionDF, polityScoreByRegionDF, by = c("country", "date")) 
+
+regimeTypeByRegion <- tbl_df(regimeTypeByRegion)
+
+regimeTypeByRegion <- select(regimeTypeByRegion, country, iso2c, iso3c, M49Code, date, democ, autoc, polityScore, durable, xrreg, xrcomp, xropen, xconst, parreg, parcomp, exrec, exconst, polcomp, polityCategory, politicalChange, pr, cl, sum, mean, status, inverse_pr, inverse_cl, inverse_mean, politicalChangeFH, region = region.x, subregion = subregion.x)
+head(regimeTypeByRegion)
+names(regimeTypeByRegion)
+summary(regimeTypeByRegion)
+
+# Joining  the data on regime types (Polity IV and Freedom House data) with the data on WGI by region with the name "WGI2regimeTypeByRegionDF"
+
+WGI2regimeTypeByRegion <- left_join(WGI2byCountryAndRegion, regimeTypeByRegion, by = c("country", "date"))
+WGI2regimeTypeByRegion <- tbl_df(WGI2regimeTypeByRegion)
+names(WGI2regimeTypeByRegion)
+
+WGI2regimeTypeByRegion <- select(WGI2regimeTypeByRegion, country, M49Code = M49Code.x, iso3c = iso3c.x, date, stability, stabilityCategory2, stabilityCategory4, corruptionControl, governmentEffectiveness, regulatoryQuality, ruleOfLaw, ruleOfLawCategory2, ruleOfLawCategory4, voiceAndAccountability, polityScore, polityCategory, polityCategory,  politicalChange, democ, autoc, durable,  xrreg, xrcomp, xropen, xconst, parreg, parcomp, exrec, exconst, polcomp, pr, cl, sum, mean, status, inverse_pr, inverse_cl, inverse_mean, politicalChangeFH, region = region.x, subregion = subregion.x)
+
+WGI2regimeTypeByRegion <- tbl_df(WGI2regimeTypeByRegion)
+head(WGI2regimeTypeByRegion)
+names(WGI2regimeTypeByRegion)
+summary(WGI2regimeTypeByRegion)
+
+# # making the data on WGI and regime type available in the local repository, under the file name "WGI2regimeTypeByRegion.csv"
+
+# WGI2regimeTypeByRegion <- write.csv(WGI2regimeTypeByRegion, "WGI2regimeTypeByRegion.csv")
+# WGI2regimeTypeByRegion <- tbl_df(WGI2regimeTypeByRegion)
+
+```
+
+
+## Collecting the data on armed conflicts from UCDP, after reading the article on ViEWS (political violence early-warning system) by Hegre et al. (2019):
+
+```{r}
+# # creating ucdpprio folder
+# if(!file.exists("ucdpprio")){
+#   dir.create("ucdpprio")
+# }
+# 
+# # Download a file from the web
+# fileUrl <- "http://ucdp.uu.se/downloads/ucdpprio/ucdp-prio-acd-181.csv"
+# 
+# download.file(fileUrl, destfile= "ucdpprio/ucdp-prio-acd-181.csv", method="curl")
+
+
+# Reading the data into r
+ucdpprioData <- read.csv("ucdpprio/ucdp-prio-acd-181.csv", header = TRUE)
+
+# Following Hegre, H., et al.(2019. ViEWS: A political violence early-warning system) and Fearon and Latin (2003, Ethnicity, Insurgency, and Civil War), we identify the countries that had "internal armed conflict" and "internationalized internal armed conflict" in the previous period and which are also likely to experience new armed conflicts during the period under consideration. The cut-off period for the conflict history is from 1960, the year of independence for most African countries.
+
+
+library(dplyr)
+armedConflictDF <- ucdpprioData %>%
+  select(country = location, year, type_of_conflict) %>%
+  filter(year <= 1995 & year >= 1960) %>%
+  filter(type_of_conflict == 3 | type_of_conflict == 4)
+armedConflictDF <- tbl_df(armedConflictDF)
+
+unique(armedConflictDF$country)
+
+
+# Here is the list of 89 countries that had a history of intrastate armed conflict during the previous period:
+# 
+#  [1] Bolivia               Iran                  Philippines           Paraguay             
+#  [5] Myanmar (Burma)       India                 Yemen                 Guatemala            
+#  [9] Israel                Thailand              Cuba                  Indonesia            
+# [13] Argentina             Vietnam              Iraq                  Lebanon              
+# [17] Malaysia              Laos                  DR Congo (Zaire)      Ethiopia             
+# [21] Nepal                 France                Venezuela             Sudan                
+# [25] Gabon                 Burundi               Chad                  Colombia             
+# [29] Dominican Republic    Peru                  Ghana                 Nigeria              
+# [33] South Africa          Syria                 Cambodia (Kampuchea)  Madagascar (Malagasy)
+# [37] Morocco               Pakistan              Sri Lanka             Uganda               
+# [41] United Kingdom        El Salvador           Oman                  Zimbabwe (Rhodesia)  
+# [45] Uruguay               Chile                 Bangladesh            Angola               
+# [49] Mozambique            Afghanistan           Nicaragua             Somalia              
+# [53] Saudi Arabia          Liberia               Spain                 Tunisia              
+# [57] Gambia                Kenya                 Cameroon              Turkey               
+# [61] Suriname              Togo                  Burkina Faso         
+# [65] Comoros               Panama                Papua New Guinea      Rumania              
+# [69] Mali                  Niger                 Rwanda                Senegal              
+# [73] Russia (Soviet Union) Trinidad and Tobago   Djibouti              Georgia              
+# [77] Haiti                 Sierra Leone          Serbia (Yugoslavia)   Algeria              
+# [81] Azerbaijan            Bosnia-Herzegovina    Croatia               Egypt                
+# [85] Moldova               Tajikistan            Mexico                Congo                
+# [89] Mauritania  
+
+# In order to be consistent throughout the data collection and analyses, the country names from the UCDP-PRIO dataset were aligned with the country names used in the World Bank dataset, and the duplicate names have been removed.
+
+# Creating a dummy variable "conflictfHist" in the main dataset "WGI2regimeTypeByRegion"
+
+WGI2regimeTypeConflictByRegion <- mutate(WGI2regimeTypeByRegion, conflictHistory = case_when(is.na(country) ~ "NA",
+                                           country == "Bolivia" ~ "1",
+                                           country == "Iran, Islamic Rep."~ "1",
+                                           country == "Philippines" ~ "1",
+                                           country == "Paraguay" ~ "1", 
+                                      country == "Myanmar" ~ "1",               
+                                      country == "India" ~ "1",
+                                      country == "Yemen, Rep." ~ "1",
+                                      country == "Guatemala" ~ "1",
+                                      country == "Israel" ~ "1",
+                                      country == "Thailand" ~ "1",
+                                      country == "Cuba" ~ "1",
+                                      country == "Indonesia" ~ "1",
+                                      country == "Argentina" ~ "1",
+                                      country == "Vietnam" ~ "1",
+                                      country == "Iraq" ~ "1",
+                                      country == "Lebanon" ~ "1",
+                                      country == "Malaysia" ~ "1",
+                                      country == "Laos" ~ "1",
+                                      country == "Congo, Dem. Rep." ~ "1",
+                                      country == "Ethiopia" ~ "1",
+                                      country == "Nepal" ~ "1",
+                                      country == "France" ~ "1",
+                                      country == "Venezuela" ~ "1",
+                                      country == "Sudan" ~ "1",
+                                      country == "Gabon" ~ "1",
+                                      country == "Burundi" ~ "1",
+                                      country == "Chad" ~ "1",
+                                      country == "Colombia" ~ "1",
+                                      country == "Dominican Republic" ~ "1",
+                                      country == "Peru" ~ "1",
+                                      country == "Ghana" ~ "1",
+                                      country == "Nigeria" ~ "1",
+                                      country == "South Africa" ~ "1",
+                                      country == "Syrian Arab Republic" ~ "1",
+                                      country == "Cambodia" ~ "1",
+                                      country == "Madagascar" ~ "1",
+                                      country == "Morocco" ~ "1",
+                                      country == "Pakistan" ~ "1",
+                                      country == "Sri Lanka" ~ "1",
+                                      country == "Uganda" ~ "1",
+                                      country == "United Kingdom" ~ "1",
+                                      country == "El Salvador" ~ "1",
+                                      country == "Oman" ~ "1",
+                                      country == "Zimbabwe" ~ "1",
+                                      country == "Uruguay" ~ "1",
+                                      country == "Chile" ~ "1",
+                                      country == "Bangladesh" ~ "1",
+                                      country == "Angola" ~ "1",
+                                      country == "Mozambique" ~ "1",
+                                      country == "Afghanistan" ~ "1",
+                                      country == "Nicaragua" ~ "1",
+                                      country == "Somalia" ~ "1",
+                                      country == "Saudi Arabia" ~ "1",
+                                      country == "Liberia" ~ "1",
+                                      country == "Spain" ~ "1",
+                                      country == "Tunisia" ~ "1",
+                                      country == "Gambia, The" ~ "1",
+                                      country == "Kenya" ~ "1",
+                                      country == "Cameroon" ~ "1",
+                                      country == "Turkey" ~ "1",      
+                                      country == "Suriname" ~ "1",
+                                      country == "Togo" ~ "1",
+                                      country == "Burkina Faso" ~ "1",
+                                      country == "Comoros" ~ "1",
+                                      country == "Panama" ~ "1",
+                                      country == "Papua New Guinea" ~ "1",
+                                      country == "Romania" ~ "1",
+                                      country == "Mali" ~ "1",
+                                      country == "Niger" ~ "1",
+                                      country == "Rwanda" ~ "1",
+                                      country == "Senegal" ~ "1",
+                                      country == "Russian Federation" ~ "1",       
+                                      country == "Trinidad and Tobago" ~ "1",
+                                      country == "Djibouti" ~ "1",
+                                      country == "Georgia" ~ "1",
+                                      country == "Haiti" ~ "1",
+                                      country == "Sierra Leone" ~ "1",
+                                      country == "Serbia" ~ "1",
+                                      country == "Algeria" ~ "1",
+                                      country == "Azerbaijan" ~ "1",
+                                      country == "Bosnia-Herzegovina" ~ "1",
+                                      country == "Croatia" ~ "1",
+                                      country == "Egypt, Arab Rep." ~ "1",
+                                      country == "Moldova" ~ "1",
+                                      country == "Tajikistan" ~ "1",
+                                      country == "Mexico" ~ "1",
+                                      country == "Congo, Rep." ~ "1",
+                                      country == "Mauritania" ~ "1",
+                                      TRUE ~ "0"))
+
+WGI2regimeTypeConflictByRegion <- tbl_df(WGI2regimeTypeConflictByRegion)
+head(WGI2regimeTypeConflictByRegion)
+summary(WGI2regimeTypeConflictByRegion)
+
+# # making the data on WGI2, regime type, and conflict history available ("WGI2regimeTypeConflictByRegion") in the local repository, under the file name "WGI2regimeTypeConflictByRegion.csv"
+# 
+# WGI2regimeTypeConflictByRegion <- write.csv(WGI2regimeTypeConflictByRegion, "WGI2regimeTypeConflictByRegion.csv")
+# 
+
+
+```
+
+
+## Joining all datasets on WGI, population, development, inequality, poverty, regime types, and conflict history in the full dataset "WGI2popDevIneqPovRegimeConflict.csv"
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+# The datasets to be joined are:
+# 1) data on governance (WGI2) by region (WGI2byCountryAndRegion)
+# 2) data on population, development, poverty, and inequality (popDevIneqPovDF)
+# 3) data on regime type and conflict history (WGI2popDevIneqPovRegimeConflict)
+
+
+# Joining the dataframe WGIdevIneqPovDF2
+
+WGI2popDevIneqPovRegimeConflict <- left_join(WGI2byCountryAndRegion, popDevIneqPovDF, by = c("country", "date"))
+WGI2popDevIneqPovRegimeConflict <- left_join(WGI2popDevIneqPovRegimeConflict, WGI2regimeTypeConflictByRegion, by = c("country", "date"))
+
+WGI2regimeTypeConflictByRegion <- tbl_df(WGI2regimeTypeConflictByRegion)
+
+names(WGI2popDevIneqPovRegimeConflict)
+
+WGI2popDevIneqPovRegimeConflict <- select(WGI2popDevIneqPovRegimeConflict, country, M49Code = M49Code.x, iso2c = iso2c.x, iso3c = iso3c.x, date, stability = stability.x, stabilityCategory2 = stabilityCategory2.x, stabilityCategory4 = stabilityCategory4.x, corruptionControl = corruptionControl.x, governmentEffectiveness = governmentEffectiveness.x, regulatoryQuality = regulatoryQuality.x, ruleOfLaw = ruleOfLaw.x, voiceAndAccountability = voiceAndAccountability.x, population, populationCategory5, ruleOfLawCategory2 = ruleOfLawCategory2.x, ruleOfLawCategory4 = ruleOfLawCategory4.x, GNIperCapita, devCategory, GDPannualGrowthRate, HDI, GINI, povertyHeadCount, polityScore, polityCategory, politicalChange, democ, autoc, durable, xrreg, xrcomp, xropen, xconst, parreg, parcomp, exrec, exconst, polcomp, pr, cl, sum, mean, status, inverse_pr, inverse_cl, inverse_mean, politicalChangeFH, conflictHistory, region = region.x, subregion =  subregion.x)
+
+# Due to inconsistencies, the following countries have been removed
+WGI2popDevIneqPovRegimeConflict <- WGI2popDevIneqPovRegimeConflict[! WGI2popDevIneqPovRegimeConflict$country == "Micronesia, Fed. Sts.",]
+WGI2popDevIneqPovRegimeConflict <- WGI2popDevIneqPovRegimeConflict[! WGI2popDevIneqPovRegimeConflict$country == "Virgin Islands (U.S.)",]
+WGI2popDevIneqPovRegimeConflict <- WGI2popDevIneqPovRegimeConflict[! WGI2popDevIneqPovRegimeConflict$country == "Netherlands Antilles (former)",]
+WGI2popDevIneqPovRegimeConflict <- WGI2popDevIneqPovRegimeConflict[! WGI2popDevIneqPovRegimeConflict$country == "French Guiana",]
+WGI2popDevIneqPovRegimeConflict <- WGI2popDevIneqPovRegimeConflict[! WGI2popDevIneqPovRegimeConflict$country == "Puerto Rico",]
+WGI2popDevIneqPovRegimeConflict <- WGI2popDevIneqPovRegimeConflict[! WGI2popDevIneqPovRegimeConflict$country == "Réunion",]
+
+summary(WGI2popDevIneqPovRegimeConflict)
+
+# The summary shows that there are 190 NAs for the variables related to population, development, inequality and development; there are also 1082 NAs for the variables related to Polity IV; and there are 541 NAs for the variables related to Freedom House. Due to the high rates of missing values and the problems related to the coding of some instances in the data from Polity IV (Ex.: transition period is coded as -88, etc. See Polity IV codebook) will not the variables from Polity IV in some analyses that need the full dataset.
+
+# The first step in cleaning the full dataset is to impute the missing values for the variables from Freedom House (541 or 13% of the observations) and the variables from the World Bank (190 or 4% of the observation).
+
+# Imputing the Freedom House variables: c("pr", "cl", "sum", "mean", "inverse_pr", "inverse_cl", "inverse_mean")
+library(VIM)
+WGI2popDevIneqPovRegimeConflict <- kNN(WGI2popDevIneqPovRegimeConflict, variable = c("pr", "cl", "sum", "mean", "inverse_pr", "inverse_cl", "inverse_mean"), k = 5)
+
+# Imputing the World Bank variables c("population", "GNIperCapita", "GDPannualGrowthRate", "HDI", "GINI", "povertyHeadCount")
+library(VIM)
+WGI2popDevIneqPovRegimeConflict <- kNN(WGI2popDevIneqPovRegimeConflict, variable = c("population", "GNIperCapita", "GDPannualGrowthRate", "HDI", "GINI", "povertyHeadCount"), k = 5)
+
+names(WGI2popDevIneqPovRegimeConflict)
+
+WGI2popDevIneqPovRegimeConflict <- select(WGI2popDevIneqPovRegimeConflict, country, M49Code, iso2c, iso3c, date, stability, stabilityCategory2, stabilityCategory4, corruptionControl, governmentEffectiveness, regulatoryQuality, ruleOfLaw, ruleOfLawCategory2, ruleOfLawCategory4, voiceAndAccountability, population, populationCategory5, GNIperCapita, devCategory, GDPannualGrowthRate, HDI, GINI, povertyHeadCount, polityScore, polityCategory, politicalChange, democ, autoc, durable, xrreg, xrcomp, xropen, xconst, parreg, parcomp, exrec, exconst, polcomp, pr, cl, sum, mean, status, inverse_pr, inverse_cl, inverse_mean, politicalChangeFH, conflictHistory, region, subregion)
+
+# Full dataset with Polity IV variables: WGI2popDevIneqPovRegimeConflict1
+
+WGI2popDevIneqPovRegimeConflict1 <- WGI2popDevIneqPovRegimeConflict
+
+
+# Full dataset without Polity IV variables: WGI2popDevIneqPovRegimeConflict2
+
+WGI2popDevIneqPovRegimeConflict2 <- select(WGI2popDevIneqPovRegimeConflict, country, M49Code, iso2c, iso3c, date, stability, stabilityCategory2, stabilityCategory4, corruptionControl, governmentEffectiveness, regulatoryQuality, ruleOfLaw, ruleOfLawCategory2, ruleOfLawCategory4, voiceAndAccountability, population, populationCategory5, GNIperCapita, devCategory, GDPannualGrowthRate, HDI, GINI, povertyHeadCount, pr, cl, sum, mean, status, inverse_pr, inverse_cl, inverse_mean, politicalChangeFH, conflictHistory, region, subregion)
+
+# Since the variable devCategory contains some missing values (190 NAs), we need to recode this variable, which depends on GNIperCapita:
+WGI2popDevIneqPovRegimeConflict2 <- WGI2popDevIneqPovRegimeConflict2 %>% mutate(devCategory=cut(GNIperCapita, breaks=c(0, 1025, 4035, 12475, Inf), labels=c("Low Income","Lower Middle Income","Upper Middle Income", "High Income")))
+
+# Since the variable "status" contains some missing values (541 NAs), we need to recode this variable, which depends on mean:
+WGI2popDevIneqPovRegimeConflict2 <- WGI2popDevIneqPovRegimeConflict2 %>% mutate(status=cut(mean, breaks=c(0, 2.5, 5.0, Inf), labels=c("Free","Partly Free","Not Free")))
+
+# Since the variable "politicalChangeFH" contains some missing values (541), we need to recode this variable, which depends on inverse_mean:
+WGI2popDevIneqPovRegimeConflict2 <- WGI2popDevIneqPovRegimeConflict2 %>% 
+  group_by(country) %>% 
+  mutate(politicalChangeFH = case_when(inverse_mean > lag(inverse_mean) ~ "democratization", 
+                                     inverse_mean < lag(inverse_mean) ~ "autocratization",
+                                     TRUE ~ "no change"))
+
+summary(WGI2popDevIneqPovRegimeConflict2)
+
+
+
+```
+
+## Making available the full dataset with Polity IV variables "WGI2popDevIneqPovRegimeConflict1" in the local repository as : "WGI2popDevIneqPovRegimeConflict1V2.csv"
+
+```{r}
+
+# WGI2popDevIneqPovRegimeConflict1 <- write.csv(WGI2popDevIneqPovRegimeConflict1, "WGI2popDevIneqPovRegimeConflict1V2.csv")
+
+```
+
+## Making available the full dataset without Polity IV variables "WGI2popDevIneqPovRegimeConflict2" in the local repository as : "WGI2popDevIneqPovRegimeConflict2V2.csv"
+
+```{r}
+ 
+# WGI2popDevIneqPovRegimeConflict2 <- write.csv(WGI2popDevIneqPovRegimeConflict2, "WGI2popDevIneqPovRegimeConflict2V2.csv")
+
+```
+
