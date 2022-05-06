@@ -1,0 +1,61 @@
+---
+title: "Country lists for comparison"
+author: "Adrien M. Ratsimbaharison"
+date: '2022-05-06'
+output:
+  pdf_document: default
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE}
+library(tidyverse)
+```
+
+
+## This file generates the different lists of countries from different sources:
+
+### WGI country name and code
+
+```{r WGI country list, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+wgiCountryList <- read_csv("wgiDataRaw.csv") %>% 
+  select(country, iso3c) %>% 
+  unique()
+print.data.frame(wgiCountryList)
+
+```
+
+
+### World Bank country name and code
+
+```{r WB country list, echo=FALSE, message=FALSE, warning=FALSE, paged.print.data.frame=FALSE}
+wbCountryList <- read_csv("economicDataRaw.csv") %>% 
+  select(country, iso2c, iso3c) %>% 
+  unique()
+print.data.frame(wbCountryList)
+
+```
+
+### Freedom House country name and code
+
+```{r FH country list, echo=FALSE, message=FALSE, warning=FALSE, paged.print=TRUE}
+fhCountryList <- read_csv("freedomHouseDataRaw.csv") %>% 
+  select(country) %>% 
+  unique()
+print.data.frame(fhCountryList)
+
+```
+
+### Polity5 country name and code
+
+```{r polity5 country list, echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+polity5CountryList <- read_csv("polity5DataRaw.csv") %>% 
+  select(country, polityCountryCode, alphabetCountryCode) %>% 
+  unique()
+print.data.frame(polity5CountryList)
+
+```
