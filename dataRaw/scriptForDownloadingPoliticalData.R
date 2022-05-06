@@ -31,5 +31,6 @@ polity5Data <- select(polity5Data, country = polity_annual_country, polityCountr
 head(polity5Data)
 View(polity5Data)
 
-# Saving the polity data in the directory
-polity5DataRaw <- write_csv(polity5Data, "dataRaw/polity5DataRaw.csv")
+# # Saving the polity data in the directory
+# polity5DataRaw <- write_csv(polity5Data, "dataRaw/polity5DataRaw.csv")
+
