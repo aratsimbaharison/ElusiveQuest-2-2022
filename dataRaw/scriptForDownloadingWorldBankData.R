@@ -28,7 +28,7 @@ library(haven)
 # populationIndicators <- write_csv(indicators, "populationIndicators")
 
 
-# Downloading the data on total population (SP.POP.TOTL) and populattion growth (SP.POP.GROW)
+# Downloading the population data, including total population (SP.POP.TOTL) and population growth (SP.POP.GROW)
 populationDF <- wb_data(country = "countries_only", indicator = c("SP.POP.TOTL", "SP.POP.GROW"), start_date = 1996, end_date = 2022)
 populationDF <- as_tibble(populationDF)
 names(populationDF)
@@ -40,3 +40,33 @@ View(populationDF)
 
 # saving the population data in the directory
 populationDataRaw <- write_csv(populationDF, "dataRaw/populationDataRaw.csv")
+
+
+# Downloading the macroeconomic data, including GDP, GDP growth, GNI per capita;
+economicData <- wb_data(country = "countries_only", indicator = c("NY.GDP.MKTP.KD", "NY.GDP.MKTP.KD.ZG", "NY.GNP.PCAP.KD"), start_date = 1996, end_date = 2022)
+economicData <- as_tibble(economicData)
+names(economicData)
+economicData <- select(economicData, country, iso2c, iso3c, date, gdp2015 = NY.GDP.MKTP.KD, gdpGrowth = NY.GDP.MKTP.KD.ZG, gniPerCapita = NY.GNP.PCAP.KD)
+
+economicData$date <- as.numeric(as.character(economicData$date))
+head(economicData)
+View(economicData)
+
+# saving the population data in the directory
+economicDataRaw <- write_csv(economicData, "dataRaw/economicDataRaw.csv")
+
+
+# Downloading the poverty and social inequality data, including poverty gap at $1.90 a day and GINI index;
+povertyInequalityData <- wb_data(country = "countries_only", indicator = c("SI.POV.GAPS", "SI.POV.GINI"), start_date = 1996, end_date = 2022)
+povertyInequalityData <- as_tibble(povertyInequalityData)
+names(povertyInequalityData)
+povertyInequalityData <- select(povertyInequalityData, country, iso2c, iso3c, date, gdp2015 = NY.GDP.MKTP.KD, gdpGrowth = NY.GDP.MKTP.KD.ZG, gniPerCapita = NY.GNP.PCAP.KD)
+
+povertyInequalityData$date <- as.numeric(as.character(povertyInequalityData$date))
+head(povertyInequalityData)
+View(povertyInequalityData)
+
+# saving the population data in the directory
+povertyInequalityDataRaw <- write_csv(povertyInequalityData, "dataRaw/povertyInequalityDataRaw.csv")
+
+
