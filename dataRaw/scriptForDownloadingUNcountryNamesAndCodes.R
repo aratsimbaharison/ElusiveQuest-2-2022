@@ -105,4 +105,5 @@ View(regionSubregionDf)
 # List of 208 countries in the world according to the Wikipedia ISO 3166-1 article for alpha and numeric country codes, and the UN Statistics site for countries' regional, and sub-regional codes:
 unique(regionSubregionDf$country)
 
-
+# # Saving the UN country names, codes, regions, and subregion
+# unContryNameCodeRegion <- write_csv(regionSubregionDf, "dataRaw/unCountryNameCodeRegion.csv")

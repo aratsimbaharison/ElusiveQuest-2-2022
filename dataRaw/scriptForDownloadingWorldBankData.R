@@ -38,8 +38,8 @@ populationDF$date <- as.numeric(as.character(populationDF$date))
 head(populationDF)
 View(populationDF)
 
-# saving the population data in the directory
-populationDataRaw <- write_csv(populationDF, "dataRaw/populationDataRaw.csv")
+# # saving the population data in the directory
+# populationDataRaw <- write_csv(populationDF, "dataRaw/populationDataRaw.csv")
 
 
 # Downloading the macroeconomic data, including GDP, GDP growth, GNI per capita;
@@ -52,21 +52,21 @@ economicData$date <- as.numeric(as.character(economicData$date))
 head(economicData)
 View(economicData)
 
-# saving the population data in the directory
-economicDataRaw <- write_csv(economicData, "dataRaw/economicDataRaw.csv")
+# # saving the population data in the directory
+# economicDataRaw <- write_csv(economicData, "dataRaw/economicDataRaw.csv")
+# 
 
-
-# Downloading the poverty and social inequality data, including poverty gap at $1.90 a day and GINI index;
+# Downloading the poverty and social inequality data, including poverty gap at $1.90 a day and GINI index:
 povertyInequalityData <- wb_data(country = "countries_only", indicator = c("SI.POV.GAPS", "SI.POV.GINI"), start_date = 1996, end_date = 2022)
 povertyInequalityData <- as_tibble(povertyInequalityData)
 names(povertyInequalityData)
-povertyInequalityData <- select(povertyInequalityData, country, iso2c, iso3c, date, gdp2015 = NY.GDP.MKTP.KD, gdpGrowth = NY.GDP.MKTP.KD.ZG, gniPerCapita = NY.GNP.PCAP.KD)
+povertyInequalityData <- select(povertyInequalityData, country, iso2c, iso3c, date, povertyGap = SI.POV.GAPS, gini = SI.POV.GINI)
 
 povertyInequalityData$date <- as.numeric(as.character(povertyInequalityData$date))
 head(povertyInequalityData)
 View(povertyInequalityData)
 
-# saving the population data in the directory
-povertyInequalityDataRaw <- write_csv(povertyInequalityData, "dataRaw/povertyInequalityDataRaw.csv")
+# # saving the population data in the directory
+# povertyInequalityDataRaw <- write_csv(povertyInequalityData, "dataRaw/povertyInequalityDataRaw.csv")
 
 
